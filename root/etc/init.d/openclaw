@@ -114,6 +114,15 @@ d.gateway.controlUi.dangerouslyAllowHostHeaderOriginFallback=true;
 delete d.gateway.name;
 delete d.gateway.bonjour;
 delete d.gateway.plugins;
+// v2026.3.2: 禁用 ACP dispatch 防止路由器内存溢出
+if(!d.acp)d.acp={};
+if(!d.acp.dispatch)d.acp.dispatch={};
+d.acp.dispatch.enabled=false;
+// v2026.3.2: tools.profile 默认改为 messaging，路由器场景需强制 coding
+if(!d.tools)d.tools={};
+d.tools.profile='coding';
+// v2026.3.2: 迁移 Ollama provider 到原生 API
+if(d.models&&d.models.providers&&d.models.providers.ollama){const ol=d.models.providers.ollama;if(ol.api==='openai-chat-completions'||ol.api==='openai-completions')ol.api='ollama';if(ol.baseUrl&&ol.baseUrl.endsWith('/v1'))ol.baseUrl=ol.baseUrl.replace(/\/v1$/,'');if(ol.apiKey==='ollama')ol.apiKey='ollama-local';}
 fs.writeFileSync(f,JSON.stringify(d,null,2));
 " 2>/dev/null
 fi

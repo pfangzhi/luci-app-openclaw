@@ -60,6 +60,7 @@ cp "$PKG_DIR/luasrc/view/openclaw/"*.htm "$DATA_DIR/usr/lib/lua/luci/view/opencl
 
 # oc-config assets
 mkdir -p "$DATA_DIR/usr/share/openclaw"
+cp "$PKG_DIR/VERSION" "$DATA_DIR/usr/share/openclaw/VERSION"
 cp "$PKG_DIR/root/usr/share/openclaw/oc-config.sh" "$DATA_DIR/usr/share/openclaw/"
 chmod +x "$DATA_DIR/usr/share/openclaw/oc-config.sh"
 cp "$PKG_DIR/root/usr/share/openclaw/web-pty.js" "$DATA_DIR/usr/share/openclaw/"

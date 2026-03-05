@@ -4,7 +4,37 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
-## [1.0.3] - 2026-03-02
+## [1.0.4] - 2026-03-05
+
+### 适配 OpenClaw 2026.3.2
+
+#### 破坏性变更修复
+- **tools.profile 默认值变更**: 2026.3.2 将 `tools.profile` 默认从 `coding` 改为 `messaging`
+  - `sync_uci_to_json()` 每次启动强制写入 `tools.profile=coding`
+  - `openclaw-env init_openclaw()` onboard 命令添加 `--tools-profile coding`
+  - `openclaw-env do_factory_reset()` onboard 命令添加 `--tools-profile coding`
+  - `oc-config.sh` 工厂重置 onboard 命令添加 `--tools-profile coding`
+  - `oc-config.sh` 工厂重置配置写入新增 `tools.profile=coding`
+- **ACP dispatch 默认启用**: 2026.3.2 默认开启 ACP dispatch，路由器内存有限可能导致 OOM
+  - `sync_uci_to_json()` 每次启动强制写入 `acp.dispatch.enabled=false`
+  - `openclaw-env do_factory_reset()` 配置写入新增 `acp.dispatch.enabled=false`
+  - `oc-config.sh` 工厂重置配置写入新增 `acp.dispatch.enabled=false`
+
+#### 新增
+- 健康检查集成 `openclaw config validate --json` 官方配置验证命令
+- 健康检查新增 `gateway health --json` CLI 深度检查 (v2026.3.2 HTTP `/health` 已被 SPA 接管)
+
+#### 修复
+- **Ollama 配置适配**: `api` 从废弃的 `openai-chat-completions` 改为原生 `ollama` API 类型
+- **Ollama baseUrl 格式**: 去掉 `/v1` 后缀，使用官方原生地址格式 (`http://host:11434`)
+- **Ollama apiKey 对齐**: 从 `ollama` 改为官方默认值 `ollama-local`
+- **启动自动迁移**: `sync_uci_to_json` 自动将旧版 Ollama 配置迁移到 v2026.3.2 格式
+
+#### 改进
+- 配置管理页面移除「菜单功能说明」信息框，减少视觉干扰
+- `OC_TESTED_VERSION` 更新至 `2026.3.2`
+
+## [1.0.3] - 2026-03-05
 
 ### 修复
 - **P0** 配置管理写入错误的 JSON 路径导致 Gateway 崩溃且无法恢复 (#1)
@@ -17,10 +47,20 @@
 - **P1** `set_active_model` 手动切换模型时未注册到 `agents.defaults.models`
 
 ### 新增
+- **Ollama 本地模型支持**: 快速配置菜单新增 Ollama 选项 (12)，支持 localhost/局域网连接、自动检测连通性、自动列出已安装模型、兼容 OpenAI chat completions 格式
 - `openclaw-env factory-reset` 非交互式恢复出厂设置命令
 - `auth_set_apikey` 函数: 正确写入 API Key 到 `auth-profiles.json`
 - `register_and_set_model` 函数: 注册模型到 `agents.defaults.models` 并设为默认
 - `register_custom_provider` 函数: 为需要 `baseUrl` 的 OpenAI 兼容供应商注册 `models.providers`
+- 「检测升级」同时检查 OpenClaw 和**插件版本** (通过 GitHub API 获取最新 release)
+- 页面加载时自动静默检查更新，有新版本时「检测升级」按钮显示橙色小红点提醒
+- 状态面板显示当前安装的插件版本号
+- 构建/安装流程部署 `VERSION` 文件到 `/usr/share/openclaw/VERSION`
+- `openclaw-env setup` 安装环境时自动安装 Gemini CLI (Google OAuth 依赖)
+
+### 改进
+- 使用指南顺序调整: ② 配置管理 → ③ Web 控制台 (首次使用更合理的引导顺序)
+- Gemini CLI 安装从配置向导选项 1 移至环境安装阶段，避免进入向导时临时等待
 
 ## [1.0.2] - 2026-03-02
 

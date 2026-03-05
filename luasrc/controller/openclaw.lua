@@ -93,7 +93,15 @@ function action_status()
 		uptime = "",
 		node_version = "",
 		openclaw_version = "",
+		plugin_version = "",
 	}
+
+	-- 插件版本
+	local pvf = io.open("/usr/share/openclaw/VERSION", "r")
+	if pvf then
+		result.plugin_version = pvf:read("*a"):gsub("%s+", "")
+		pvf:close()
+	end
 
 	-- 检查 Node.js
 	local node_bin = "/opt/openclaw/node/bin/node"
@@ -278,10 +286,10 @@ function action_check_update()
 	local http = require "luci.http"
 	local sys = require "luci.sys"
 
-	-- 当前版本
+	-- 当前 OpenClaw 版本
 	local current = get_openclaw_version()
 
-	-- 最新版本 (从 npm registry 查询)
+	-- 最新 OpenClaw 版本 (从 npm registry 查询)
 	local latest = sys.exec("PATH=/opt/openclaw/node/bin:/opt/openclaw/global/bin:$PATH npm view openclaw version 2>/dev/null"):gsub("%s+", "")
 
 	local has_update = false
@@ -289,12 +297,42 @@ function action_check_update()
 		has_update = true
 	end
 
+	-- 插件版本检查 (从 GitHub API 获取最新 release tag)
+	local plugin_current = ""
+	local pf = io.open("/usr/share/openclaw/VERSION", "r")
+		or io.open("/root/luci-app-openclaw/VERSION", "r")
+	if pf then
+		plugin_current = pf:read("*a"):gsub("%s+", "")
+		pf:close()
+	end
+
+	local plugin_latest = ""
+	local plugin_has_update = false
+	-- 仅在请求参数含 check_plugin=1 或 quick=1 时检查插件版本
+	local check_plugin = http.formvalue("check_plugin") or ""
+	local quick = http.formvalue("quick") or ""
+	if check_plugin == "1" or quick == "1" then
+		-- 使用 GitHub API 获取最新 release tag (轻量, 不下载任何文件)
+		local gh_resp = sys.exec("curl -sf --connect-timeout 5 --max-time 10 'https://api.github.com/repos/10000ge10000/luci-app-openclaw/releases/latest' 2>/dev/null | grep -o '\"tag_name\"[[:space:]]*:[[:space:]]*\"[^\"]*\"' | head -1 | cut -d'\"' -f4")
+		gh_resp = gh_resp:gsub("%s+", "")
+		if gh_resp ~= "" then
+			-- tag 可能是 v1.0.3 或 1.0.3
+			plugin_latest = gh_resp:gsub("^v", "")
+		end
+		if plugin_current ~= "" and plugin_latest ~= "" and plugin_current ~= plugin_latest then
+			plugin_has_update = true
+		end
+	end
+
 	http.prepare_content("application/json")
 	http.write_json({
 		status = "ok",
 		current = current,
 		latest = latest,
-		has_update = has_update
+		has_update = has_update,
+		plugin_current = plugin_current,
+		plugin_latest = plugin_latest,
+		plugin_has_update = plugin_has_update
 	})
 end
 

@@ -359,7 +359,8 @@ configure_model() {
 	echo -e "  ${CYAN}9)${NC} xAI Grok (Grok-3/3-mini)"
 	echo -e "  ${CYAN}10)${NC} Groq (Llama 4, Llama 3.3)"
 	echo -e "  ${CYAN}11)${NC} 硅基流动 SiliconFlow"
-	echo -e "  ${CYAN}12)${NC} 自定义 OpenAI 兼容 API"
+	echo -e "  ${CYAN}12)${NC} Ollama (本地模型，无需 API Key)"
+	echo -e "  ${CYAN}13)${NC} 自定义 OpenAI 兼容 API"
 	echo -e "  ${CYAN}0)${NC} 返回"
 	echo ""
 	prompt_with_default "请选择" "1" choice
@@ -373,14 +374,6 @@ configure_model() {
 			echo -e "  ${CYAN}预启用模型认证插件...${NC}"
 			enable_auth_plugins
 			echo ""
-			# 检查并安装 gemini-cli (官方向导的 Google Gemini OAuth 依赖)
-			if ! command -v gemini >/dev/null 2>&1; then
-				local npm_bin="${NODE_BASE}/bin/npm"
-				if [ -x "$npm_bin" ]; then
-					echo -e "  ${CYAN}安装 Gemini CLI (官方向导 Google OAuth 依赖)...${NC}"
-					"$npm_bin" install -g @google/gemini-cli --prefix="$OC_GLOBAL" >/dev/null 2>&1 || true
-				fi
-			fi
 			(oc_cmd configure --section model) || echo -e "  ${YELLOW}配置向导已退出${NC}"
 			echo ""
 			ask_restart
@@ -718,6 +711,122 @@ configure_model() {
 			fi
 			;;
 		12)
+			echo ""
+			echo -e "  ${BOLD}🦙 Ollama 本地模型配置${NC}"
+			echo -e "  ${YELLOW}Ollama 在本地或局域网运行大模型，无需 API Key${NC}"
+			echo -e "  ${YELLOW}安装 Ollama: https://ollama.com${NC}"
+			echo ""
+			echo -e "  ${CYAN}连接方式:${NC}"
+			echo -e "    ${CYAN}a)${NC} 本机运行 (localhost:11434)"
+			echo -e "    ${CYAN}b)${NC} 局域网其他设备"
+			echo ""
+			prompt_with_default "请选择" "a" ollama_mode
+			local ollama_url=""
+			case "$ollama_mode" in
+				b)
+					prompt_with_default "Ollama 地址 (如 192.168.1.100:11434)" "" ollama_host
+					if [ -n "$ollama_host" ]; then
+						# 补全协议前缀
+						case "$ollama_host" in
+							http://*|https://*) ollama_url="${ollama_host}" ;;
+							*) ollama_url="http://${ollama_host}" ;;
+						esac
+						# v2026.3.2: Ollama 使用原生 API，baseUrl 不带 /v1
+						ollama_url=$(echo "$ollama_url" | sed 's|/v1/*$||;s|/*$||')
+					fi
+					;;
+				*)
+					ollama_url="http://127.0.0.1:11434"
+					;;
+			esac
+			if [ -n "$ollama_url" ]; then
+				# 检测 Ollama 是否可达
+				echo ""
+				echo -e "  ${CYAN}检测 Ollama 连通性...${NC}"
+				local ollama_base=$(echo "$ollama_url" | sed 's|/v1$||')
+				local ollama_check=$(curl -sf --connect-timeout 3 --max-time 5 "${ollama_base}/api/tags" 2>/dev/null || echo "")
+				if [ -n "$ollama_check" ]; then
+					echo -e "  ${GREEN}✅ Ollama 已连接${NC}"
+					# 列出已安装的模型
+					local model_list=$("$NODE_BIN" -e "
+						try{
+							const d=JSON.parse(process.argv[1]);
+							(d.models||[]).forEach((m,i)=>console.log('    '+(i+1)+') '+m.name));
+						}catch(e){}
+					" "$ollama_check" 2>/dev/null)
+					if [ -n "$model_list" ]; then
+						echo -e "  ${CYAN}已安装的模型:${NC}"
+						echo "$model_list"
+						echo -e "    ${CYAN}m)${NC} 手动输入模型名"
+						echo ""
+						prompt_with_default "请选择模型" "1" ollama_sel
+						if [ "$ollama_sel" = "m" ]; then
+							prompt_with_default "请输入模型名称" "llama3.3" model_name
+						elif echo "$ollama_sel" | grep -qE '^[0-9]+$'; then
+							model_name=$("$NODE_BIN" -e "
+								try{
+									const d=JSON.parse(process.argv[1]);
+									const m=(d.models||[])[parseInt(process.argv[2])-1];
+									console.log(m?m.name:'');
+								}catch(e){console.log('');}
+							" "$ollama_check" "$ollama_sel" 2>/dev/null)
+							if [ -z "$model_name" ]; then
+								echo -e "  ${YELLOW}无效选择，使用默认模型${NC}"
+								model_name="llama3.3"
+							fi
+						fi
+					else
+						echo -e "  ${YELLOW}未检测到已安装模型，请先在 Ollama 中拉取模型:${NC}"
+						echo -e "  ${CYAN}  ollama pull llama3.3${NC}"
+						echo ""
+						prompt_with_default "请输入模型名称" "llama3.3" model_name
+					fi
+				else
+					echo -e "  ${YELLOW}⚠️  无法连接 Ollama (${ollama_base})${NC}"
+					echo -e "  ${YELLOW}   请确认 Ollama 已启动并可访问${NC}"
+					echo -e "  ${CYAN}   提示: 如果 Ollama 在其他设备上，需设置 OLLAMA_HOST=0.0.0.0${NC}"
+					echo ""
+					prompt_with_default "仍要继续配置? (y/n)" "n" force_continue
+					if ! confirm_yes "$force_continue"; then
+						return
+					fi
+					prompt_with_default "请输入模型名称" "llama3.3" model_name
+				fi
+				if [ -n "$model_name" ]; then
+					# Ollama 无需 API Key，使用占位符
+					auth_set_apikey ollama "ollama-local" "ollama:local"
+					# v2026.3.2: Ollama 使用原生 ollama API，不再走 OpenAI 兼容层
+					_RCP_PROV="ollama" _RCP_URL="$ollama_url" _RCP_KEY="ollama-local" _RCP_MID="$model_name" _RCP_MNAME="$model_name" "$NODE_BIN" -e "
+						const fs=require('fs');
+						let d={};
+						try{d=JSON.parse(fs.readFileSync('${CONFIG_FILE}','utf8'));}catch(e){}
+						if(!d.models)d.models={};
+						if(!d.models.providers)d.models.providers={};
+						d.models.mode='merge';
+						d.models.providers['ollama']={
+							baseUrl:process.env._RCP_URL,
+							apiKey:process.env._RCP_KEY,
+							api:'ollama',
+							models:[{
+								id:process.env._RCP_MID,
+								name:process.env._RCP_MNAME,
+								reasoning:false,
+								input:['text'],
+								cost:{input:0,output:0,cacheRead:0,cacheWrite:0},
+								contextWindow:128000,
+								maxTokens:32000
+							}]
+						};
+						fs.writeFileSync('${CONFIG_FILE}',JSON.stringify(d,null,2));
+					" 2>/dev/null
+					chown openclaw:openclaw "$CONFIG_FILE" 2>/dev/null || true
+					register_and_set_model "ollama/${model_name}"
+					echo -e "  ${GREEN}✅ Ollama 已配置，活跃模型: ollama/${model_name}${NC}"
+					echo -e "  ${CYAN}   Ollama 地址: ${ollama_url}${NC}"
+				fi
+			fi
+			;;
+		13)
 			echo ""
 			echo -e "  ${BOLD}自定义 OpenAI 兼容 API${NC}"
 			echo -e "  ${YELLOW}支持任何兼容 OpenAI API 格式的服务商${NC}"
@@ -1108,6 +1217,34 @@ health_check() {
 	local gw_port=$(json_get gateway.port)
 	gw_port=${gw_port:-18789}
 
+	# ── v2026.3.2: 使用官方 config validate 验证配置 ──
+	if command -v openclaw >/dev/null 2>&1 || [ -n "$OC_ENTRY" ]; then
+		echo -e "  ${CYAN}验证配置文件格式...${NC}"
+		local validate_out=""
+		validate_out=$(oc_cmd config validate --json 2>/dev/null) || true
+		if [ -n "$validate_out" ]; then
+			local has_errors=$("$NODE_BIN" -e "
+				try{const r=JSON.parse(process.argv[1]);
+				if(r.valid===true){console.log('OK');}
+				else if(r.errors&&r.errors.length>0){r.errors.forEach(e=>console.log('ERR:'+e.message));}
+				else{console.log('OK');}}catch(e){console.log('SKIP');}
+			" "$validate_out" 2>/dev/null)
+			if [ "$has_errors" = "OK" ]; then
+				echo -e "  ${GREEN}✅ 配置文件格式有效${NC}"
+			elif [ "$has_errors" = "SKIP" ]; then
+				echo -e "  ${YELLOW}⚠️  无法解析验证结果，跳过${NC}"
+			else
+				echo -e "  ${RED}❌ 配置文件存在错误:${NC}"
+				echo "$has_errors" | while IFS= read -r line; do
+					echo -e "     ${YELLOW}• ${line#ERR:}${NC}"
+				done
+			fi
+		else
+			echo -e "  ${YELLOW}⚠️  config validate 不可用，跳过格式验证${NC}"
+		fi
+		echo ""
+	fi
+
 	# ── 自动修复: 移除旧版错误写入的顶层 models.xxx 无效键 ──
 	if [ -f "$CONFIG_FILE" ]; then
 		local has_bad_models=$("$NODE_BIN" -e "
@@ -1150,6 +1287,19 @@ health_check() {
 		echo -e "  ${GREEN}✅ HTTP 响应正常 (${http_code})${NC}"
 	else
 		echo -e "  ${RED}❌ HTTP 响应异常 (${http_code})${NC}"
+	fi
+
+	# v2026.3.2: 使用 gateway health --json 做深度健康检查 (HTTP /health 已被 SPA 接管)
+	local health_resp=$(oc_cmd gateway health --json 2>/dev/null)
+	if [ -n "$health_resp" ]; then
+		local health_ok=$("$NODE_BIN" -e "try{const h=JSON.parse(process.argv[1]);console.log(h.ok?'ok':'fail');}catch(e){console.log('parse_error');}" "$health_resp" 2>/dev/null)
+		if [ "$health_ok" = "ok" ]; then
+			echo -e "  ${GREEN}✅ Gateway 健康检查正常${NC}"
+		elif [ "$health_ok" = "parse_error" ]; then
+			echo -e "  ${YELLOW}⚠️  Gateway 健康检查响应无法解析${NC}"
+		else
+			echo -e "  ${YELLOW}⚠️  Gateway 健康检查异常${NC}"
+		fi
 	fi
 
 	if [ -f "$CONFIG_FILE" ]; then
@@ -1296,9 +1446,9 @@ reset_to_defaults() {
 				local _node_bin
 				_node_bin=$(which node 2>/dev/null || echo "$NODE_BIN")
 				if command -v timeout >/dev/null 2>&1; then
-					timeout 10 sh -c "\"$_node_bin\" \"$OC_ENTRY\" onboard --non-interactive --accept-risk" >/dev/null 2>&1 || true
+					timeout 10 sh -c "\"$_node_bin\" \"$OC_ENTRY\" onboard --non-interactive --accept-risk --tools-profile coding" >/dev/null 2>&1 || true
 				else
-					"$_node_bin" "$OC_ENTRY" onboard --non-interactive --accept-risk >/dev/null 2>&1 &
+					"$_node_bin" "$OC_ENTRY" onboard --non-interactive --accept-risk --tools-profile coding >/dev/null 2>&1 &
 					local _ob_pid=$!
 					sleep 10
 					kill "$_ob_pid" 2>/dev/null || true
@@ -1318,6 +1468,8 @@ reset_to_defaults() {
 				json_set gateway.controlUi.dangerouslyDisableDeviceAuth true
 				json_set gateway.controlUi.dangerouslyAllowHostHeaderOriginFallback true
 				json_set gateway.tailscale.mode off
+				json_set acp.dispatch.enabled false
+				json_set tools.profile coding
 
 				# 同步 token 到 UCI
 				. /lib/functions.sh 2>/dev/null || true

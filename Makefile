@@ -63,6 +63,7 @@ define Package/$(PKG_NAME)/install
 	$(INSTALL_DATA) ./luasrc/view/openclaw/advanced.htm $(1)/usr/lib/lua/luci/view/openclaw/advanced.htm
 	$(INSTALL_DATA) ./luasrc/view/openclaw/console.htm $(1)/usr/lib/lua/luci/view/openclaw/console.htm
 	$(INSTALL_DIR) $(1)/usr/share/openclaw
+	$(INSTALL_DATA) ./VERSION $(1)/usr/share/openclaw/VERSION
 	$(INSTALL_BIN) ./root/usr/share/openclaw/oc-config.sh $(1)/usr/share/openclaw/oc-config.sh
 	$(INSTALL_DATA) ./root/usr/share/openclaw/web-pty.js $(1)/usr/share/openclaw/web-pty.js
 	$(INSTALL_DIR) $(1)/usr/share/openclaw/ui

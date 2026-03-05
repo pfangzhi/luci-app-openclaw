@@ -62,6 +62,7 @@ install_files() {
 
 	# oc-config assets
 	mkdir -p "$dest/usr/share/openclaw"
+	cp "$PKG_DIR/VERSION" "$dest/usr/share/openclaw/VERSION"
 	cp "$PKG_DIR/root/usr/share/openclaw/oc-config.sh" "$dest/usr/share/openclaw/"
 	chmod +x "$dest/usr/share/openclaw/oc-config.sh"
 	cp "$PKG_DIR/root/usr/share/openclaw/web-pty.js" "$dest/usr/share/openclaw/"
