@@ -34,6 +34,8 @@
 - 修复首次安装后 `doctor --fix` 可能移除 `gateway.auth.token`，导致 Gateway 绑定 LAN 时因缺少认证直接退出，页面显示“启动失败，退出码 78”。
 - `doctor --fix` 执行环境补齐 `NODE_ICU_DATA` 和 Node/OpenClaw PATH，避免部分 musl 固件上配置迁移阶段触发 ICU/Unicode 正则错误。
 - Gateway 启动时增加 `OPENCLAW_GATEWAY_TOKEN` 环境变量兜底，确保 JSON 配置被迁移工具改写后仍能使用 UCI token 启动。
+- `.run` 安装器补齐运行依赖安装，避免精简固件缺少 GNU tar 时 Node.js `.tar.xz` 解压失败。
+- `openclaw-env setup` 改为先完整解压验证 Node.js，再替换正式目录；安装失败时保留已有运行目录，避免重装失败清空 `/opt/openclaw`。
 
 ### 验证
 
