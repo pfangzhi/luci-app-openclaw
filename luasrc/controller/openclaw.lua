@@ -273,6 +273,25 @@ local function wechat_npm_fallback_install_cmd(install_path, log_file, exit_file
 		"fi; "
 end
 
+local function wechat_npm_direct_install_cmd(install_path, log_file, exit_file)
+	local package_json = "{\n  \"private\": true,\n  \"dependencies\": {\n    \"@tencent-weixin/openclaw-weixin\": \"latest\"\n  }\n}\n"
+	return "echo '使用 npm 直装微信插件，避免官方安装器进入扫码等待...' >> " .. shellquote(log_file) .. "; " ..
+		"OC_WECHAT_NPM_PROJECT=\"$OC_WECHAT_DATA/.openclaw/npm/projects/tencent-weixin-openclaw-weixin-7783ac86ba\"; " ..
+		"mkdir -p \"$OC_WECHAT_NPM_PROJECT\" \"$OC_WECHAT_DATA/.npm\" \"$OC_WECHAT_DATA/.tmp\" \"$OC_WECHAT_DATA/.openclaw/npm/projects\"; " ..
+		"chown -R openclaw:openclaw \"$OC_WECHAT_NPM_PROJECT\" \"$OC_WECHAT_DATA/.npm\" \"$OC_WECHAT_DATA/.tmp\" \"$OC_WECHAT_DATA/.openclaw/npm/projects\" 2>/dev/null; " ..
+		"cat > \"$OC_WECHAT_NPM_PROJECT/package.json\" <<'OC_WECHAT_PACKAGE_JSON'\n" ..
+		package_json ..
+		"OC_WECHAT_PACKAGE_JSON\n" ..
+		"chown openclaw:openclaw \"$OC_WECHAT_NPM_PROJECT/package.json\" 2>/dev/null; " ..
+		"cd \"$OC_WECHAT_NPM_PROJECT\" && " ..
+		"_oc_as_openclaw 'HOME=$OC_WECHAT_DATA OPENCLAW_HOME=$OC_WECHAT_DATA OPENCLAW_STATE_DIR=$OC_WECHAT_DATA/.openclaw OPENCLAW_CONFIG_PATH=$OC_WECHAT_DATA/.openclaw/openclaw.json " ..
+		"NODE_ICU_DATA=" .. install_path .. "/node/share/icu NPM_CONFIG_CACHE=$OC_WECHAT_DATA/.npm npm_config_cache=$OC_WECHAT_DATA/.npm TMPDIR=$OC_WECHAT_DATA/.tmp " ..
+		"PATH=" .. install_path .. "/node/bin:" .. install_path .. "/global/bin:$PATH " ..
+		"npm install --omit=dev --omit=peer --legacy-peer-deps --no-audit --no-fund --loglevel=error' >> " .. shellquote(log_file) .. " 2>&1; " ..
+		"RC=$?; echo $RC > " .. shellquote(exit_file) .. "; " ..
+		"if [ $RC -eq 0 ]; then echo '✅ npm 直装微信插件完成' >> " .. shellquote(log_file) .. "; else echo '❌ npm 直装微信插件失败 (exit: '$RC')' >> " .. shellquote(log_file) .. "; fi; "
+end
+
 local function wechat_tail_detail(text, max_lines)
 	if not text or text == "" then
 		return ""
@@ -1586,13 +1605,7 @@ function action_wechat_install()
 		"else mkdir -p \"$OC_WECHAT_DATA/.npm\" \"$OC_WECHAT_DATA/.tmp\" \"$OC_WECHAT_DATA/.openclaw/extensions\"; chown -R openclaw:openclaw \"$OC_WECHAT_DATA/.npm\" \"$OC_WECHAT_DATA/.tmp\" 2>/dev/null; chown openclaw:openclaw \"$OC_WECHAT_DATA/.openclaw\" 2>/dev/null; fi; " ..
 		"if [ ! -w %s/.npm ] || [ ! -w %s/.tmp ]; then echo '❌ npm cache/tmp 目录不可写' >> /tmp/openclaw-wechat-install.log; echo 1 > /tmp/openclaw-wechat-install.exit; exit 0; fi; " ..
 		"_oc_as_openclaw 'test -w %s/.npm && test -w %s/.tmp && test -w %s/.openclaw' || { echo '❌ openclaw 用户无法写入 npm cache/tmp/data 目录' >> /tmp/openclaw-wechat-install.log; echo 1 > /tmp/openclaw-wechat-install.exit; exit 0; }; " ..
-		"cd %s && " ..
-		"_oc_as_openclaw 'HOME=%s OPENCLAW_HOME=%s OPENCLAW_STATE_DIR=%s/.openclaw " ..
-		"OPENCLAW_CONFIG_PATH=%s/.openclaw/openclaw.json NODE_ICU_DATA=%s/node/share/icu NPM_CONFIG_CACHE=%s/.npm npm_config_cache=%s/.npm TMPDIR=%s/.tmp " ..
-		"PATH=%s/node/bin:%s/global/bin:$PATH " ..
-		"%s -y @tencent-weixin/openclaw-weixin-cli install' >> /tmp/openclaw-wechat-install.log 2>&1; " ..
-		"RC=$?; echo $RC > /tmp/openclaw-wechat-install.exit; " ..
-		wechat_npm_fallback_install_cmd(install_path, "/tmp/openclaw-wechat-install.log", "/tmp/openclaw-wechat-install.exit") ..
+		wechat_npm_direct_install_cmd(install_path, "/tmp/openclaw-wechat-install.log", "/tmp/openclaw-wechat-install.exit") ..
 		wechat_register_plugin_cmd(install_path, node_bin, "/tmp/openclaw-wechat-install.log") ..
 		-- 关键修复: 安装完成后强制修复插件目录权限 (确保 Gateway 可读取插件)
 		-- 原因: npx/npm 以 root 身份创建目录，默认权限 700 导致其他用户无法读取
@@ -1606,8 +1619,6 @@ function action_wechat_install()
 		oc_data, oc_data,
 		oc_data, oc_data, oc_data,
 		install_path, oc_data, oc_data, oc_data,
-		oc_data, install_path, oc_data, oc_data, oc_data,
-		install_path, install_path, npx_bin,
 		oc_data
 	)
 	sys.exec(install_cmd)
@@ -2055,13 +2066,7 @@ function action_wechat_upgrade_plugin()
 		"else mkdir -p \"$OC_WECHAT_DATA/.npm\" \"$OC_WECHAT_DATA/.tmp\" \"$OC_WECHAT_DATA/.openclaw/extensions\"; chown -R openclaw:openclaw \"$OC_WECHAT_DATA/.npm\" \"$OC_WECHAT_DATA/.tmp\" 2>/dev/null; chown openclaw:openclaw \"$OC_WECHAT_DATA/.openclaw\" 2>/dev/null; fi; " ..
 		"if [ ! -w %s/.npm ] || [ ! -w %s/.tmp ]; then echo '❌ npm cache/tmp 目录不可写' >> /tmp/openclaw-wechat-install.log; echo 1 > /tmp/openclaw-wechat-install.exit; exit 0; fi; " ..
 		"_oc_as_openclaw 'test -w %s/.npm && test -w %s/.tmp && test -w %s/.openclaw' || { echo '❌ openclaw 用户无法写入 npm cache/tmp/data 目录' >> /tmp/openclaw-wechat-install.log; echo 1 > /tmp/openclaw-wechat-install.exit; exit 0; }; " ..
-		"cd %s && " ..
-		"_oc_as_openclaw 'HOME=%s OPENCLAW_HOME=%s OPENCLAW_STATE_DIR=%s/.openclaw " ..
-		"OPENCLAW_CONFIG_PATH=%s/.openclaw/openclaw.json NODE_ICU_DATA=%s/node/share/icu NPM_CONFIG_CACHE=%s/.npm npm_config_cache=%s/.npm TMPDIR=%s/.tmp " ..
-		"PATH=%s/node/bin:%s/global/bin:$PATH " ..
-		"%s -y @tencent-weixin/openclaw-weixin-cli install' >> /tmp/openclaw-wechat-install.log 2>&1; " ..
-		"RC=$?; echo $RC > /tmp/openclaw-wechat-install.exit; " ..
-		wechat_npm_fallback_install_cmd(install_path, "/tmp/openclaw-wechat-install.log", "/tmp/openclaw-wechat-install.exit") ..
+		wechat_npm_direct_install_cmd(install_path, "/tmp/openclaw-wechat-install.log", "/tmp/openclaw-wechat-install.exit") ..
 		wechat_register_plugin_cmd(install_path, node_bin, "/tmp/openclaw-wechat-install.log") ..
 		-- 关键修复: 升级完成后强制修复插件目录权限 (确保 Gateway 可读取插件)
 		-- 注意: 保持 root:root 属主 (OpenClaw v2026.4.9+ 安全要求)，仅修复权限模式
@@ -2074,8 +2079,6 @@ function action_wechat_upgrade_plugin()
 		oc_data, oc_data,
 		oc_data, oc_data, oc_data,
 		install_path, oc_data, oc_data, oc_data,
-		oc_data, install_path, oc_data, oc_data, oc_data,
-		install_path, install_path, npx_bin,
 		oc_data
 	)
 	sys.exec(upgrade_cmd)
