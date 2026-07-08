@@ -11,6 +11,10 @@ grep -q "NODE_VERSION_V2=\"22.23.0\"" root/usr/bin/openclaw-env || fail "default
 grep -q "OC_NODE_MIN_VERSION=\"\${OC_NODE_MIN_VERSION:-22.19.0}\"" root/usr/bin/openclaw-env || fail "minimum Node.js version not pinned"
 grep -q "oc_assert_node_min_version" root/usr/bin/openclaw-env || fail "Node.js minimum version check missing"
 grep -q 'oc_node_version_ge "$from_pkg" "$required"' root/usr/bin/openclaw-env || fail "package Node.js requirement must not lower static minimum"
+grep -q "install_openclaw_cli_wrapper" root/usr/bin/openclaw-env || fail "OpenClaw CLI wrapper must set runtime env"
+grep -q 'export NODE_ICU_DATA="${NODE_BASE}/share/icu"' root/usr/bin/openclaw-env || fail "OpenClaw CLI wrapper must export NODE_ICU_DATA"
+grep -q 'rm -f "$OC_GLOBAL/bin/openclaw"' root/usr/bin/openclaw-env || fail "OpenClaw CLI wrapper must unlink npm symlink before writing"
+grep -q "Extended_Pictographic" root/usr/bin/openclaw-env || fail "Node runtime must validate Unicode property escapes"
 if grep -q 'v1_tarball' root/usr/bin/openclaw-env; then
 	fail "installer must not silently fall back to legacy Node.js tarball"
 fi
