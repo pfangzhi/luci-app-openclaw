@@ -57,6 +57,12 @@ grep -q "start-stop-daemon -S -m -p" luasrc/controller/openclaw.lua || fail "wec
 grep -q "command -v curl" luasrc/controller/openclaw.lua || fail "wechat network probe should prefer curl"
 grep -q "%%{http_code}" luasrc/controller/openclaw.lua || fail "wechat curl probe percent must be escaped for string.format"
 grep -q "wechat_npm_fallback_install_cmd" luasrc/controller/openclaw.lua || fail "wechat install needs npm fallback for OpenWrt Node undici OOM"
+if awk '/function action_wechat_install\(\)/,/function action_wechat_install_log\(\)/' luasrc/controller/openclaw.lua | grep -q "ensure_port_free"; then
+	fail "wechat install must not stop gateway before plugin installation"
+fi
+if awk '/function action_wechat_upgrade_plugin\(\)/,/function action_wechat_uninstall_plugin\(\)/' luasrc/controller/openclaw.lua | grep -q "ensure_port_free"; then
+	fail "wechat upgrade must not stop gateway before plugin upgrade"
+fi
 grep -q "npm install --omit=dev --omit=peer" luasrc/controller/openclaw.lua || fail "wechat npm fallback install command missing"
 grep -q "tencent-weixin-openclaw-weixin-7783ac86ba" luasrc/controller/openclaw.lua || fail "wechat npm fallback project dir missing"
 grep -q "export OC_WECHAT_DATA" luasrc/controller/openclaw.lua || fail "wechat npm fallback must export data dir into openclaw user shell"

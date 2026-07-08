@@ -524,21 +524,30 @@ function action_status()
 		local gw_check = sys.exec(gw_check_cmd):gsub("%s+", "")
 	result.gateway_running = (tonumber(gw_check) or 0) > 0
 
-	-- 如果端口未监听但 procd 进程存在，说明正在启动中 (gateway 初始化需要数分钟)
+	-- 如果端口未监听，结合 procd 与真实进程判断状态。
+	-- 不能只看 pid 字段或 pidfile：procd crash-loop / stale pidfile 会让 LuCI 误显示“正在启动”。
 	if not result.gateway_running and enabled == "1" then
 		local procd_pid = sys.exec("ubus call service list '{\"name\":\"openclaw\"}' 2>/dev/null | jsonfilter -e '$.openclaw.instances.gateway.pid' 2>/dev/null"):gsub("%s+", "")
 		local procd_running = sys.exec("ubus call service list '{\"name\":\"openclaw\"}' 2>/dev/null | jsonfilter -e '$.openclaw.instances.gateway.running' 2>/dev/null"):gsub("%s+", "")
 		local procd_exit = sys.exec("ubus call service list '{\"name\":\"openclaw\"}' 2>/dev/null | jsonfilter -e '$.openclaw.instances.gateway.exit_code' 2>/dev/null"):gsub("%s+", "")
+		if procd_pid == "null" or not procd_pid:match("^%d+$") then procd_pid = "" end
+		if procd_exit == "null" then procd_exit = "" end
 		result.gateway_exit_code = procd_exit
+
+		local procd_pid_alive = false
+		if procd_pid ~= "" then
+			procd_pid_alive = (sys.exec("[ -d /proc/" .. procd_pid .. " ] && echo 1 || echo 0"):gsub("%s+", "") == "1")
+		end
+		local crash_loop = sys.exec("logread 2>/dev/null | grep -E 'Instance openclaw::gateway.*crash loop' | tail -1"):gsub("^%s+", ""):gsub("%s+$", "")
+
 		if procd_exit ~= "" and tonumber(procd_exit) and tonumber(procd_exit) ~= 0 and procd_running ~= "true" then
 			result.gateway_failed = true
-		elseif procd_pid ~= "" or procd_running == "true" then
+		elseif crash_loop ~= "" and procd_running ~= "true" and not procd_pid_alive then
+			result.gateway_failed = true
+			result.gateway_crash_loop = true
+			if result.gateway_exit_code == "" then result.gateway_exit_code = "crash-loop" end
+		elseif procd_running == "true" or procd_pid_alive then
 			result.gateway_starting = true
-		else
-			local fallback_pid = sys.exec("pgrep -f 'openclaw.*gateway' 2>/dev/null | head -1"):gsub("%s+", "")
-			if fallback_pid ~= "" then
-				result.gateway_starting = true
-			end
 		end
 	end
 
@@ -1549,10 +1558,7 @@ function action_wechat_install()
 		return
 	end
 
-	-- 后台执行安装
-	-- 在启动安装前，确保网关端口可用（自动清理残留 gateway 进程）
-	local port = uci:get("openclaw", "main", "port") or "18789"
-	ensure_port_free(port)
+	-- 后台执行安装。注意：插件安装不需要释放 Gateway 端口，避免误停正在运行的 Gateway 触发 procd crash-loop。
 	-- 微信插件安装目录路径 (用于安装后权限修复)
 	local extensions_dir = install_path .. "/data/.openclaw/extensions"
 	local install_cmd = string.format(
@@ -2013,10 +2019,7 @@ function action_wechat_upgrade_plugin()
 		return
 	end
 
-	-- 后台执行升级 (其实就是重新安装最新版)
-	-- 在启动升级前，确保网关端口可用（自动清理残留 gateway 进程）
-	local port = uci:get("openclaw", "main", "port") or "18789"
-	ensure_port_free(port)
+	-- 后台执行升级 (其实就是重新安装最新版)。不要释放 Gateway 端口，避免误停正在运行的 Gateway。
 	-- 微信插件安装目录路径 (用于升级后权限修复)
 	local extensions_dir = install_path .. "/data/.openclaw/extensions"
 	local upgrade_cmd = string.format(
